@@ -136,4 +136,89 @@ class TaskRepository extends BaseRepository implements TaskRepositoryInterface
             return false;
         }
     }
+
+    public function addDependency(int $taskId, int $dependsOnId): bool
+    {
+        if ($taskId === $dependsOnId || $taskId <= 0 || $dependsOnId <= 0) {
+            return false;
+        }
+
+        try {
+            $checkStmt = $this->db->prepare("
+                SELECT COUNT(*) FROM task_dependencies 
+                WHERE task_id = :task_id AND depends_on_id = :depends_on_id
+            ");
+            $checkStmt->execute([
+                ':task_id'       => $taskId,
+                ':depends_on_id' => $dependsOnId
+            ]);
+
+            if ($checkStmt->fetchColumn() > 0) {
+                return true;
+            }
+
+            $stmt = $this->db->prepare("
+                INSERT INTO task_dependencies (task_id, depends_on_id) 
+                VALUES (:task_id, :depends_on_id)
+            ");
+            return $stmt->execute([
+                ':task_id'       => $taskId,
+                ':depends_on_id' => $dependsOnId
+            ]);
+        } catch (PDOException $e) {
+            error_log("Database error in TaskRepository::addDependency: " . $e->getMessage());
+            return false;
+        }
+    }
+
+    public function getDependencies(int $taskId): array
+    {
+        try {
+            $stmt = $this->db->prepare("
+                SELECT t.id, t.title, t.status, t.priority, td.id AS dependency_id
+                FROM task_dependencies td
+                JOIN tasks t ON td.depends_on_id = t.id
+                WHERE td.task_id = :task_id
+            ");
+            $stmt->execute([':task_id' => $taskId]);
+            return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        } catch (PDOException $e) {
+            error_log("Database error in TaskRepository::getDependencies: " . $e->getMessage());
+            return [];
+        }
+    }
+
+    public function hasUncompletedDependencies(int $taskId): bool
+    {
+        try {
+            $stmt = $this->db->prepare("
+                SELECT COUNT(*) 
+                FROM task_dependencies td
+                JOIN tasks t ON td.depends_on_id = t.id
+                WHERE td.task_id = :task_id AND t.status != 'completed'
+            ");
+            $stmt->execute([':task_id' => $taskId]);
+            return ((int) $stmt->fetchColumn()) > 0;
+        } catch (PDOException $e) {
+            error_log("Database error in TaskRepository::hasUncompletedDependencies: " . $e->getMessage());
+            return false;
+        }
+    }
+
+    public function setDependencies(int $taskId, array $dependencies): void
+    {
+        try {
+            $stmt = $this->db->prepare("DELETE FROM task_dependencies WHERE task_id = :task_id");
+            $stmt->execute([':task_id' => $taskId]);
+
+            foreach ($dependencies as $depId) {
+                $depId = (int)$depId;
+                if ($depId > 0 && $depId !== $taskId) {
+                    $this->addDependency($taskId, $depId);
+                }
+            }
+        } catch (PDOException $e) {
+            error_log("Database error in TaskRepository::setDependencies: " . $e->getMessage());
+        }
+    }
 }
