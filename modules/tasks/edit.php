@@ -1,5 +1,10 @@
 <?php
 require_once __DIR__ . '/../../config/app.php';
+require_once __DIR__ . '/../../includes/validation/TaskValidator.php';
+use App\Validation\TaskValidator;
+
+$validator = new TaskValidator();
+$errors = [];
 requireLogin();
 $user = currentUser();
 
@@ -50,9 +55,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'due_date' => $_POST['due_date'] ?: null,
     ];
 
-    if ($data['title'] === '' || !$data['project_id']) {
-        $error = 'Title and project are required.';
-    } else {
+   $isNewTask = empty($id);
+if (!$validator->validate($data, $isNewTask)) {
+    $errors = $validator->getErrors();
+    $error = 'يرجى تصحيح الأخطاء الموضحة أدناه.';
+} else {
         $previousAssignee = $id ? $task['assigned_to'] : null;
 
         if ($id) {
@@ -92,20 +99,30 @@ require __DIR__ . '/../../includes/header.php';
     <?php if ($error): ?><div class="alert alert-error"><?= e($error) ?></div><?php endif; ?>
     <form method="post">
         <?= csrfField() ?>
-        <div class="form-group">
+       <div class="form-group">
             <label>Title</label>
-            <input type="text" name="title" value="<?= e($task['title']) ?>" required>
+            <input type="text" name="title" value="<?= e($_POST['title'] ?? $task['title']) ?>" class="<?= isset($errors['title']) ? 'is-invalid' : '' ?>" required>
+            <?php if (isset($errors['title'])): ?>
+                <div class="field-error text-danger small mt-1"><?= e($errors['title']) ?></div>
+            <?php endif; ?>
         </div>
 
         <div class="form-row">
             <div class="form-group">
                 <label>Project</label>
-                <select name="project_id" required>
-                    <option value="">— Select —</option>
+                <select name="project_id" class="<?= isset($errors['project_id']) ? 'is-invalid' : '' ?>" required>
+                    <option value="">Select Project</option>
                     <?php foreach ($projects as $p): ?>
-                        <option value="<?= $p['id'] ?>" <?= $task['project_id'] == $p['id'] ? 'selected' : '' ?>><?= e($p['name']) ?></option>
+                        <?php 
+                            $selectedProj = $_POST['project_id'] ?? $task['project_id'];
+                            $isSelected = ($selectedProj == $p['id']) ? 'selected' : '';
+                        ?>
+                        <option value="<?= $p['id'] ?>" <?= $isSelected ?>><?= e($p['name']) ?></option>
                     <?php endforeach; ?>
                 </select>
+                <?php if (isset($errors['project_id'])): ?>
+                    <div class="field-error text-danger small mt-1"><?= e($errors['project_id']) ?></div>
+                <?php endif; ?>
             </div>
             <div class="form-group">
                 <label>Phase</label>
@@ -130,13 +147,20 @@ require __DIR__ . '/../../includes/header.php';
 
         <div class="form-row">
             <div class="form-group">
-                <label>Priority</label>
-                <select name="priority">
-                    <?php foreach (['low','medium','high','critical'] as $p): ?>
-                        <option value="<?= $p ?>" <?= $task['priority'] === $p ? 'selected' : '' ?>><?= ucfirst($p) ?></option>
-                    <?php endforeach; ?>
-                </select>
-            </div>
+            <label>Priority</label>
+            <select name="priority" class="<?= isset($errors['priority']) ? 'is-invalid' : '' ?>">
+                <?php foreach (['low', 'medium', 'high', 'urgent'] as $p): ?>
+                    <?php 
+                        $selectedPrio = $_POST['priority'] ?? $task['priority'];
+                        $isSelected = ($selectedPrio === $p) ? 'selected' : '';
+                    ?>
+                    <option value="<?= $p ?>" <?= $isSelected ?>><?= ucfirst($p) ?></option>
+                <?php endforeach; ?>
+            </select>
+            <?php if (isset($errors['priority'])): ?>
+                <div class="field-error text-danger small mt-1"><?= e($errors['priority']) ?></div>
+            <?php endif; ?>
+        </div>
             <div class="form-group">
                 <label>Status</label>
                 <select name="status">
@@ -214,7 +238,13 @@ require __DIR__ . '/../../includes/header.php';
             </div>
             <div class="form-group">
                 <label>Due date</label>
-                <input type="date" name="due_date" value="<?= e($task['due_date']) ?>">
+                <input type="date" 
+                    name="due_date" 
+                    value="<?= e($_POST['due_date'] ?? $task['due_date']) ?>" 
+                    class="<?= isset($errors['due_date']) ? 'is-invalid' : '' ?>">
+                <?php if (isset($errors['due_date'])): ?>
+                    <div class="field-error text-danger small mt-1"><?= e($errors['due_date']) ?></div>
+                <?php endif; ?>
             </div>
         </div>
 
